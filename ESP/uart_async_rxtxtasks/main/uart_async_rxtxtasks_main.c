@@ -1,10 +1,4 @@
-/* UART asynchronous example, that uses separate RX and TX tasks
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
+/* Created from UART asynchronous example, that uses separate RX and TX tasks
 */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -62,6 +56,7 @@ struct TStamp
     int value;
 } tstmp;
 
+
 struct TStamp rcControl[4];  // 0 - WHEEl       1 - SPEED       2 - BUTTON1        3 - BUTTON2
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
@@ -76,9 +71,9 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 void init(void) 
 {
 
-    rcControl[0].deadTime = 100;
-    rcControl[0].maxValue = 100;
-    rcControl[0].minValue = -100;
+    rcControl[0].deadTime = 100; // some dead-zone for min values to stop our hover-board
+    rcControl[0].maxValue = 100; // max wheel-position value for modbus trasmitting
+    rcControl[0].minValue = -100; // min wheel-position value for modbus trasmitting
     rcControl[0].maxPulse = 10000;
     rcControl[0].minPulse = 4800;
     rcControl[0].zerroPulse = 7425;
@@ -86,8 +81,8 @@ void init(void)
 
     
     rcControl[1].deadTime = 100;
-    rcControl[1].maxValue = 100;
-    rcControl[1].minValue = -100;
+    rcControl[1].maxValue = 100; // max speed-position value for modbus trasmitting
+    rcControl[1].minValue = -100; //min wheel-position value for modbus trasmitting
     rcControl[1].maxPulse = 10000;
     rcControl[1].minPulse = 4800;
     rcControl[1].zerroPulse = 7425;
@@ -138,6 +133,7 @@ void init(void)
 
 void sendMBReq()
 {
+	// wait end of answering of modbus devices
     MbSendGetHRSRQ(1, 0, 16, UART_NUM_1, 0);
     while (state == MODBUS_STATES_RQSEND)
         vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -147,23 +143,25 @@ void sendMBReq()
     MbSendGetHRSRQ(3, 0, 16, UART_NUM_1, 32);
     while (state == MODBUS_STATES_RQSEND)
         vTaskDelay(10 / portTICK_PERIOD_MS);
+	
+	// Check and send button1 and button2 statates
     short val = 0;
     if (rcControl[2].value>0)
         val = val | 8;
     if (rcControl[3].value>0)
         val = val | 16;
-
     MbSendSetRegister(3, 0, val, UART_NUM_1);
     while (state == MODBUS_STATES_RQSEND)
         vTaskDelay(10 / portTICK_PERIOD_MS);
 
+	// Send speed value for left BLCD-motors (tank mode)
     val = rcControl[1].value*2 + rcControl[0].value/1;
-    MbSendSetRegister(0, 5, val, UART_NUM_1);
+    MbSendSetRegister(0, 5, val, UART_NUM_1);  // zerro address used as anytime-command for modbus devices 1 and 2 (blcd-motor drivers)
     while (state == MODBUS_STATES_RQSEND)
         vTaskDelay(10 / portTICK_PERIOD_MS);
-
+	// Send speed value for right BLCD-motors (tank mode)
     val = rcControl[1].value*2 - rcControl[0].value/1;
-    MbSendSetRegister(0, 6, val, UART_NUM_1);
+    MbSendSetRegister(0, 6, val, UART_NUM_1);  // zerro address used as anytime-command for modbus devices 1 and 2 (blcd-motor drivers)
     while (state == MODBUS_STATES_RQSEND)
         vTaskDelay(10 / portTICK_PERIOD_MS);
 
@@ -245,16 +243,17 @@ static void gpio_task(void* arg)
             if (io_msg.pinNum == BUTN2_PIN) pos = 3;
             if (pos >=0)
             {
-                if (io_msg.value == 1)
+				// got new interrupt - raising or falling enge on some pin, where rc-receiver connected. Our purpos to calculate pulse lenght and convert it in to modbus command, using values in rcControl[]
+                if (io_msg.value == 1) // Start pwm-pulse
                 {
-                    rcControl[pos].raiseTime = io_msg.timeStamp;
+                    rcControl[pos].raiseTime = io_msg.timeStamp; 
                 }
-                if (io_msg.value == 0)
+                if (io_msg.value == 0) // End pwm-pulse
                 {
                     rcControl[pos].failTime = io_msg.timeStamp;
                     rcControl[pos].pulseTime = (unsigned int)(rcControl[pos].failTime - rcControl[pos].raiseTime);
                     if (rcControl[pos].pulseTime > (rcControl[pos].maxPulse  + 2*rcControl[pos].deadTime) || rcControl[pos].pulseTime < (rcControl[pos].minPulse - 2*rcControl[pos].deadTime)) 
-                        rcControl[pos].pulseTime = rcControl[pos].zerroPulse;
+                        rcControl[pos].pulseTime = rcControl[pos].zerroPulse; // it was wrong pulse-time, reset it
                     if (rcControl[pos].pulseTime > rcControl[pos].zerroPulse) 
                     {
                         if (rcControl[pos].pulseTime - rcControl[pos].zerroPulse < rcControl[pos].deadTime)
@@ -292,7 +291,7 @@ static void gpio_task(void* arg)
     }
 }
 
-static void debug_tasg(void* arg)
+static void debug_task(void* arg)
 {
     static const char *DB_TASK_TAG = "DB_TASK";
     esp_log_level_set(DB_TASK_TAG, ESP_LOG_INFO);
@@ -346,5 +345,5 @@ void app_main(void)
     xTaskCreate(rx_task, "uart_rx_task", 2048, NULL, configMAX_PRIORITIES, NULL);
     xTaskCreate(tx_task, "uart_tx_task", 2048, NULL, configMAX_PRIORITIES-1, NULL);
     xTaskCreate(gpio_task, "gpio_task", 2048, NULL, configMAX_PRIORITIES-2, NULL);
-    xTaskCreate(debug_tasg, "debug_task", 2048, NULL, configMAX_PRIORITIES-3, NULL);
+    xTaskCreate(debug_task, "debug_task", 2048, NULL, configMAX_PRIORITIES-3, NULL);
 }

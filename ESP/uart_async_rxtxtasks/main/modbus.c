@@ -86,24 +86,21 @@ void MbParseAnswer(uint8_t* data, int rxBytes)
             }
         }
         else
-        {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+        {                                                                                                                                                               
             if (rxBytes > 0) 
             {
                 data[rxBytes] = 0;
                 //ESP_LOGI(RX_TASK_TAG, "Read %d bytes: '%s'", rxBytes, data);
                 //ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
                 MbSetResult(MODBUS_RESULT_UNASKED);
-
-            }
+			}
             else 
             {
-                
                 //ESP_LOGI(RX_TASK_TAG, "No answer from device %d", rw_buffer[0]);
                 MbSetResult(MODBUS_RESULT_NO_ANSWER);
             }
         }
     state = MODBUS_STATES_UNDEF;
-
 }
 
 unsigned short MbCRCfunc(unsigned short inCRC, unsigned char in)
