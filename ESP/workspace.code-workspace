@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"queue.h": "c",
+			"freertos.h": "c",
+			"time.h": "c"
+		}
+	}
+}
